@@ -1,1 +1,1 @@
-R code used to reformat senescence signatures for SENgEAR upload.
+R code used to reformat senescence signatures for upload to SENgEAR.
