@@ -1,0 +1,260 @@
+---
+title: "format for gEAR"
+author: "Sushma Nagaraj"
+date: "2026-02-11"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+suppressPackageStartupMessages({
+  library(readxl)
+  library(dplyr)
+  library(stringr)
+  library(tidyr)
+})
+
+here::i_am("signatures/format_for_gEAR.Rmd")
+```
+
+
+# SenCID (biomart does not map all the gene names to ensembl ids)
+```{r}
+library(biomaRt)
+mart <- useMart(biomart = "ensembl", dataset = "hsapiens_gene_ensembl")
+sheets <- excel_sheets(here::here("SenCID", "mmc4.xlsx"))
+SID_sheets <- sheets[grep("_marker", sheets)]
+
+lapply(SID_sheets, function(sheet) {
+  marker <- read_excel(here::here("SenCID", "mmc4.xlsx"), sheet = sheet)
+  ensembl_ids <- getBM(attributes = c("ensembl_gene_id","hgnc_symbol"),
+                       filters = "hgnc_symbol", values = marker[["...1"]],
+                       mart = mart)
+  ensembl_ids <- ensembl_ids[! duplicated(ensembl_ids$hgnc_symbol), ]
+  colnames(ensembl_ids) <- c("ensembl_id", "gene_symbol")
+
+  marker <- marker %>%
+    filter(! (is.na(SID_DEG))) %>%
+    rename("gene_symbol" = "...1") %>% 
+    dplyr::select(gene_symbol, logFC) %>%
+    left_join(ensembl_ids, by = "gene_symbol") %>%
+    relocate(ensembl_id, gene_symbol) %>%
+    filter(! is.na(ensembl_id))
+
+  write.table(marker, here::here("SenCID", paste0(sheet, ".gEAR.tab")), sep = "\t", quote = FALSE, row.names = FALSE, col.names = TRUE)
+})
+
+```
+
+# Hernandez-Segura 
+```{r}
+prep_sig <- function(df) {
+  df <- df %>%
+    #filter(padj < 0.05) %>% # the results are already filtered to 0.05
+    dplyr::select(Ensembl_ID, Gene_Names, log2FoldChange) %>%
+    rename("gene_symbol" = "Gene_Names", "ensembl_id" = "Ensembl_ID")
+  return(df)
+}
+
+# FIBROBLAST SIGNATURES
+sheets <- excel_sheets(here::here("Hernandez-Segura", "mmc2.xls"))
+
+# Oncogene induced senescence
+ois <- read_excel(here::here("Hernandez-Segura", "mmc2.xls"), sheet = "Data S1B", skip = 3)
+ois_reformat <- prep_sig(ois) 
+write.table(ois_reformat, here::here("Hernandez-Segura", "Hernandez-Segura_OIS_Fibroblast.gEAR.tab"), sep = "\t", quote = FALSE, row.names = FALSE, col.names = TRUE)
+
+# Replicative senescence
+rs <- read_excel(here::here("Hernandez-Segura", "mmc2.xls"), sheet = "Data S1C", skip = 3)
+rs_reformat <- rs %>%
+  filter(`NB-GLM_adjPval` < 0.05) %>%
+  dplyr::select(Ensembl_ID, Gene_names, `NB-GLM_FC`) %>%
+  rename("gene_symbol" = "Gene_names", "ensembl_id" = "Ensembl_ID")
+write.table(rs_reformat, here::here("Hernandez-Segura", "Hernandez-Segura_RS_Fibroblast.gEAR.tab"), sep = "\t", quote = FALSE, row.names = FALSE, col.names = TRUE)
+
+# Ionizing-Radiation induced senescence
+iris <- read_excel(here::here("Hernandez-Segura", "mmc2.xls"), sheet = "Data S1D", skip = 2)
+iris_reformat <- iris %>%
+  dplyr::select(Ensembl_ID, Gene_names, log2FoldChange) %>%
+  rename("gene_symbol" = "Gene_names", "ensembl_id" = "Ensembl_ID")
+write.table(iris_reformat, here::here("Hernandez-Segura", "Hernandez-Segura_IRIS_Fibroblast.gEAR.tab"), sep = "\t", quote = FALSE, row.names = FALSE, col.names = TRUE)
+
+# Fibroblast Senescence
+fib <- read_excel(here::here("Hernandez-Segura", "mmc2.xls"), sheet = "Data S1E", skip = 2)
+fib_reformat <- fib %>%
+  dplyr::select(Ensembl_ID, Gene_names, `Meta_NB-GLM_FC`) %>%
+  rename("gene_symbol" = "Gene_names", "ensembl_id" = "Ensembl_ID")
+write.table(fib_reformat, here::here("Hernandez-Segura", "Hernandez-Segura_Sen_Fibroblast.gEAR.tab"), sep = "\t", quote = FALSE, row.names = FALSE, col.names = TRUE)
+
+
+
+# OTHER SIGNATURES
+sheets <- excel_sheets(here::here("Hernandez-Segura", "mmc3.xls"))
+
+# Keratinocytes IRIS
+ker <- read_excel(here::here("Hernandez-Segura", "mmc3.xls"), sheet = "Data S2B", skip = 2)
+ker_reformat <- prep_sig(ker)
+write.table(ker_reformat, here::here("Hernandez-Segura", "Hernandez-Segura_IRIS_Keratinocytes.gEAR.tab"), sep = "\t", quote = FALSE, row.names = FALSE, col.names = TRUE)
+
+# Melanocytes IRIS
+mel <- read_excel(here::here("Hernandez-Segura", "mmc3.xls"), sheet = "Data S2C", skip = 2)
+mel_reformat <- prep_sig(mel)
+write.table(mel_reformat, here::here("Hernandez-Segura", "Hernandez-Segura_IRIS_Melanocytes.gEAR.tab"), sep = "\t", quote = FALSE, row.names = FALSE, col.names = TRUE)
+
+# Astrocytes Senescence induced by Oxidative stress
+ast <- read_excel(here::here("Hernandez-Segura", "mmc3.xls"), sheet = "Data S2D", skip = 2)
+ast_reformat <- prep_sig(ast)
+write.table(ast_reformat, here::here("Hernandez-Segura", "Hernandez-Segura_OSIS_Astrocytes.gEAR.tab"), sep = "\t", quote = FALSE, row.names = FALSE, col.names = TRUE)
+
+# Universal signature of senescence
+univ <- read_excel(here::here("Hernandez-Segura", "mmc3.xls"), sheet = "Data S2F", skip = 3)
+univ_reformat <- univ %>%
+  dplyr::select(Gene_names)
+write.table(univ_reformat, here::here("Hernandez-Segura", "Hernandez-Segura_Universal_sen_sig.gEAR.tab"), sep = "\t", quote = FALSE, row.names = FALSE, col.names = FALSE)
+
+
+
+# TEMPORAL DYNAMICS POST RADIATION (IRIS)
+sheets <- excel_sheets(here::here("Hernandez-Segura", "mmc4.xls"))
+
+# day 4
+d4 <- read_excel(here::here("Hernandez-Segura", "mmc4.xls"), sheet = "Data S3A", skip = 3)
+d4_reformat <- d4 %>%
+  dplyr::select(Gene_Names)
+write.table(d4_reformat, here::here("Hernandez-Segura", "Hernandez-Segura_D4_post_IRIS.gEAR.tab"), sep = "\t", quote = FALSE, row.names = FALSE, col.names = FALSE)
+
+# day 10
+d10 <- read_excel(here::here("Hernandez-Segura", "mmc4.xls"), sheet = "Data S3B", skip = 3)
+d10_reformat <- d10 %>%
+  dplyr::select(Gene_Names)
+write.table(d10_reformat, here::here("Hernandez-Segura", "Hernandez-Segura_D10_post_IRIS.gEAR.tab"), sep = "\t", quote = FALSE, row.names = FALSE, col.names = FALSE)
+
+# day 20
+d20 <- read_excel(here::here("Hernandez-Segura", "mmc4.xls"), sheet = "Data S3C", skip = 3)
+d20_reformat <- d20 %>%
+  dplyr::select(Gene_Names)
+write.table(d20_reformat, here::here("Hernandez-Segura", "Hernandez-Segura_D20_post_IRIS.gEAR.tab"), sep = "\t", quote = FALSE, row.names = FALSE, col.names = FALSE)
+```
+
+
+# Moiseeva
+```{r}
+sheets <- excel_sheets(here::here("Moiseeva", "41586_2022_5535_MOESM13_ESM.xlsx"))
+
+comp <- read_excel(here::here("Moiseeva", "41586_2022_5535_MOESM13_ESM.xlsx"), sheet = "Ext.Fig.5d", skip = 2, n_max = 1)
+groups <- c(colnames(comp)[grep("Young", colnames(comp))],
+            colnames(comp)[grep("Geriatric", colnames(comp))])
+
+sigs <- read_excel(here::here("Moiseeva", "41586_2022_5535_MOESM13_ESM.xlsx"), sheet = "Ext.Fig.5d", skip = 3)
+res_cols <- split(colnames(sigs), rep(1:12, each = 5))
+names(res_cols) <- groups
+res_list <- lapply(res_cols, function(res) {
+  sig <- sigs %>% 
+    select(all_of(res))
+  colnames(sig) <- str_remove(colnames(sig), pattern = "\\.\\.\\.[0-9]+")
+  sig %>% 
+    drop_na(padj) %>%
+    select(ensembl_gene_id, mgi_symbol, log2FoldChange) %>%
+    rename("ensembl_id" = "ensembl_gene_id", "gene_symbol" = "mgi_symbol")
+})
+
+lapply(names(res_list), function(res) {
+  fname <- gsub(" ", "_", res)
+  write.table(res_list[[res]], here::here("Moiseeva", paste0("Moiseeva_", fname, ".gEAR.tab")), sep = "\t", quote = FALSE, row.names = FALSE, col.names = TRUE)
+})
+
+```
+
+# Xu Aggregated SnG module
+```{r}
+library(biomaRt)
+mart <- useMart(biomart = "ensembl", dataset = "hsapiens_gene_ensembl")
+sheets <- excel_sheets(here::here("Xu", "13024_2021_507_MOESM2_ESM.xlsx"))
+
+sig <- read_excel(here::here("Xu", "13024_2021_507_MOESM2_ESM.xlsx"), sheet = "Table S6", skip = 1)
+
+ensembl_ids <- getBM(attributes = c("ensembl_gene_id","hgnc_symbol"),
+                     filters = "hgnc_symbol", values = sig$Symbol,
+                     mart = mart)
+ensembl_ids <- ensembl_ids[! duplicated(ensembl_ids$hgnc_symbol), ]
+colnames(ensembl_ids) <- c("ensembl_id", "gene_symbol")
+
+sig.gear <- sig %>%
+  dplyr::select(Symbol, Weight) %>%
+  rename("gene_symbol" = Symbol) %>%
+  left_join(ensembl_ids, by = "gene_symbol") %>%
+  relocate(ensembl_id, gene_symbol) %>%
+  filter(! is.na(ensembl_id))
+
+write.table(sig.gear, here::here("Xu", "Agg_SnG_module.gEAR.tab"), sep = "\t", quote = FALSE, row.names = FALSE, col.names = TRUE)
+```
+
+
+# Cherry SnC vs Quiescent Fibroblast, in monoculture or co-cultured wth Macrophages
+```{r}
+library(biomaRt)
+
+# Methods states alignment was to GRCm38.p6
+mart <- useMart(biomart = "ensembl", dataset = "mmusculus_gene_ensembl", host = "https://nov2020.archive.ensembl.org")
+
+# SnC vs Quiescent Fibroblasts in monoculture
+sig1 <- read.csv(here::here("Cherry", "2021_EliseSnCvQSN_Monoculture.csv"), header = TRUE)
+
+ensembl_ids <- getBM(attributes = c("ensembl_gene_id","mgi_symbol"),
+                     filters = "mgi_symbol", values = sig1$X,
+                     mart = mart)
+ensembl_ids <- ensembl_ids[! duplicated(ensembl_ids$mgi_symbol), ]
+colnames(ensembl_ids) <- c("ensembl_id", "gene_symbol")
+
+sig1.gear <- sig1 %>%
+  filter(padj < 0.05) %>%
+  dplyr::select(X, stat) %>%
+  rename("gene_symbol" = X) %>%
+  left_join(ensembl_ids, by = "gene_symbol") %>%
+  relocate(ensembl_id, gene_symbol) %>%
+  filter(! is.na(ensembl_id))
+
+write.table(sig1.gear, here::here("Cherry", "SnC_vs_Quiescent_Fib.gEAR.tab"), sep = "\t", quote = FALSE, row.names = FALSE, col.names = TRUE)
+
+# SnC vs Quiescent Fibroblasts co-cultured with Macrophages
+sig2 <- read.csv(here::here("Cherry", "2021_EliseSnCvQSN_MacCoculture.csv"), header = TRUE)
+
+ensembl_ids <- getBM(attributes = c("ensembl_gene_id","mgi_symbol"),
+                     filters = "mgi_symbol", values = sig2$X,
+                     mart = mart)
+ensembl_ids <- ensembl_ids[! duplicated(ensembl_ids$mgi_symbol), ]
+colnames(ensembl_ids) <- c("ensembl_id", "gene_symbol")
+
+sig2.gear <- sig2 %>%
+  filter(padj < 0.05) %>%
+  dplyr::select(X, stat) %>%
+  rename("gene_symbol" = X) %>%
+  left_join(ensembl_ids, by = "gene_symbol") %>%
+  relocate(ensembl_id, gene_symbol) %>%
+  filter(! is.na(ensembl_id))
+
+write.table(sig2.gear, here::here("Cherry", "SnC_Fib_vs_Quiescent_Fib_cocultured_with_macs.gEAR.tab"), sep = "\t", quote = FALSE, row.names = FALSE, col.names = TRUE)
+
+```
+
+
+# senCAF
+```{r}
+library(tibble)
+
+df <- read.table(here::here("signatures", "senCAF_msigdb", "YE_BELLE_SENCAF_CONSENSUS.v2026.1.Mm.tsv"), sep = "\t", header = FALSE)
+sig <- df %>% 
+  filter(V1 == "GENE_SYMBOLS") %>%
+  select(V2) %>%
+  deframe()
+
+sig <- str_split_1(sig, ",")
+write.table(sig, file = here::here("signatures", "senCAF_msigdb", "senCAF.tsv"), row.names = FALSE, col.names = FALSE)
+```
+
+
+
+
+
+
