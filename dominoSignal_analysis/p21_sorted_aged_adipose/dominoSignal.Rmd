@@ -1,0 +1,107 @@
+---
+title: "dominoSignal analysis"
+author: "Sushma Nagaraj"
+date: "2026-09-09"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE)
+
+here::i_am("dominoSignal_analysis/p21_sorted_aged_adipose/dominoSignal.Rmd")
+source(here::here("dominoSignal_analysis", "p21_sorted_aged_adipose", "paths.R"))
+
+suppressPackageStartupMessages({
+  library(dominoSignal, lib.loc = dominoSignal_local_path)
+  library(dplyr)
+  library(purrr)
+  library(tibble)
+  library(tidyr)
+  library(readxl)
+  library(Seurat)
+  library(readr)
+})
+
+```
+
+
+# Read in Seurat object, create annotation column with GFP +/- macrophages, extract matrices
+```{r}
+seu <- readRDS(file.path(p21_path, "data/GSE269660_GFP_pos_neg_fat_All.rds"))
+
+seu$CellTypes_GFPStatus <- as.character(seu$CellTypes)
+seu$CellTypes_GFPStatus[seu$CellTypes_GFPStatus == "Macrophages"] <- paste0(seu$CellTypes_GFPStatus[seu$CellTypes_GFPStatus == "Macrophages"], "_", seu$GFP_status[seu$CellTypes_GFPStatus == "Macrophages"])
+
+counts <- GetAssayData(seu, assay = "RNA", layer = "counts")
+dim(counts)
+z_scores <- GetAssayData(seu, assay = "RNA", layer = "data")
+z_scores <- t(scale(t(z_scores)))
+dim(z_scores)
+clusters <- seu[["CellTypes_GFPStatus"]]
+str(clusters)
+clusters <- as.factor(clusters[,1])
+names(clusters) <- colnames(seu)
+table(clusters)
+```
+
+
+# pyscenic results
+```{r}
+auc <- read.table(file.path(p21_path, "results/scenic_results/auc_aged_adipose.csv"), header = T, row.names = 1, stringsAsFactors = F, sep = ",")
+colnames(auc) <- sapply(colnames(auc), gsub, pattern = "\\.\\.\\.", replacement = "")
+regulon_df <- read.csv(file.path(p21_path, "results/scenic_results/regulons_aged_adipose.csv"), skip = 2)
+regulon_colnames <- c("TF", "MotifID", "AUC", "NES", "MotifSimilarityQvalue", "OrthologousIdentity", "Annotation", "Context", "TargetGenes", "RankAtMax")
+colnames(regulon_df) <- regulon_colnames
+regulon_ls <- create_regulon_list_scenic(regulon_df)
+```
+
+# cellphoneDB interactions
+```{r}
+cellphonedb <- readRDS(here::here("dominoSignal_analysis", "cellphoneDB", "cpdb_rl_map.rds"))
+```
+
+
+# run dominoSignal
+```{r}
+dom <- create_domino(
+  rl_map = cellphonedb,
+  features = t(auc),
+  counts = counts,
+  z_scores = z_scores,
+  clusters = clusters,
+  tf_targets = regulon_ls,
+  use_clusters = T,
+  use_complexes = T,
+  remove_rec_dropout = F
+) %>% build_domino(
+  dom = .,
+  min_tf_pval = .001,
+  max_tf_per_clust = Inf,
+  max_rec_per_tf = Inf,
+  rec_tf_cor_threshold = .25
+)
+```
+
+
+```{r}
+saveRDS(dom, here::here("dominoSignal_analysis", "p21_sorted_aged_adipose", "domino.rds"))
+```
+
+
+# Signaling network dataframe
+```{r}
+df <- network2df(dom)
+
+df.reformat <- df %>%
+  select(ligand, receptor, transcription_factor, ligand_mean_z_score, receptor_mean_z_score, median_tf_auc, sending_cluster, receiving_cluster, data_wide_cor, cluster_cor) %>%
+  rename(ligand_exp = ligand_mean_z_score, receptor_exp = receptor_mean_z_score, tf_auc = median_tf_auc, sending_cl = sending_cluster, receiving_cl = receiving_cluster)
+
+write.csv(df.reformat, here::here("gEAR_implementation_of_dominoSignal", "p21_sorted_aged_adipose", "domino_network.reformatted.csv"), row.names = FALSE)
+```
+
+
+```{r}
+sink(file = here::here("dominoSignal_analysis", "p21_sorted_aged_adipose", "sessionInfo.txt"))
+sessionInfo()
+sink()
+```

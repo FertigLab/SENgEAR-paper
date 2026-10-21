@@ -250,11 +250,78 @@ sig <- df %>%
   deframe()
 
 sig <- str_split_1(sig, ",")
-write.table(sig, file = here::here("signatures", "senCAF_msigdb", "senCAF.tsv"), row.names = FALSE, col.names = FALSE)
+write.table(sig, file = here::here("signatures", "senCAF_msigdb", "senCAF.tsv"), row.names = FALSE, col.names = FALSE, quote = FALSE)
 ```
 
 
+# SenePy
+```{r}
+library(biomaRt)
+
+# Human signatures
+human <- read.csv(here::here("signatures", "SenePy", "SenePy_all_individual_human_signatures.csv"), header = TRUE)
+
+# Fetch Ensembl IDs for the genes
+mart <- useMart(biomart = "ensembl", dataset = "hsapiens_gene_ensembl", host = "https://may2025.archive.ensembl.org")
+ensembl_ids <- getBM(attributes = c("ensembl_gene_id","hgnc_symbol"),
+             filters = "hgnc_symbol", values = unique(human$gene),
+             mart = mart)
+
+ensembl_ids <- ensembl_ids[! duplicated(ensembl_ids$hgnc_symbol), ]
+colnames(ensembl_ids) <- c("ensembl_id", "gene_symbol")
+
+# Reformat for gEAR
+human_senepy <- human %>%
+  dplyr::select(gene, signature_id, importance) %>%
+  mutate(signature_id = str_replace_all(signature_id, 
+                                        pattern = " \\| ", 
+                                        replacement = "_") |>
+                        str_replace_all(pattern = " ",
+                                        replacement = "")) %>%
+  pivot_wider(names_from = signature_id, values_from = importance, values_fill = 0) %>%
+  rename(gene_symbol = gene) %>%
+  left_join(ensembl_ids, by = "gene_symbol") %>%
+  relocate(ensembl_id, gene_symbol) %>%
+  filter(! is.na(ensembl_id)) %>%
+  distinct()
+
+human_senepy <- human_senepy[!duplicated(human_senepy$ensembl_id), ]
+write.table(human_senepy, here::here("signatures", "SenePy", "SenePy_Human.tab"), sep = "\t", quote = FALSE, row.names = FALSE, col.names = TRUE)
 
 
+# Mouse signatures
+mouse <- read.csv(here::here("signatures", "SenePy", "SenePy_all_individual_mouse_signatures.csv"), header = TRUE)
+
+# Fetch Ensembl IDs for the genes
+mart <- useMart(biomart = "ensembl", dataset = "mmusculus_gene_ensembl", host = "https://may2025.archive.ensembl.org")
+ensembl_ids <- getBM(attributes = c("ensembl_gene_id","mgi_symbol"),
+             filters = "mgi_symbol", values = unique(mouse$gene),
+             mart = mart)
+
+ensembl_ids <- ensembl_ids[! duplicated(ensembl_ids$mgi_symbol), ]
+colnames(ensembl_ids) <- c("ensembl_id", "gene_symbol")
+
+# Reformat for gEAR
+mouse_senepy <- mouse %>%
+  dplyr::select(gene, signature_id, importance) %>%
+  mutate(signature_id = str_replace_all(signature_id, 
+                                        pattern = " \\| ", 
+                                        replacement = "_") |>
+                        str_replace_all(pattern = " ",
+                                        replacement = "")) %>%
+  pivot_wider(names_from = signature_id, values_from = importance, values_fill = 0) %>%
+  rename(gene_symbol = gene) %>%
+  left_join(ensembl_ids, by = "gene_symbol") %>%
+  relocate(ensembl_id, gene_symbol) %>%
+  filter(! is.na(ensembl_id))
+
+write.table(mouse_senepy, here::here("signatures", "SenePy", "SenePy_Mouse.tab"), sep = "\t", quote = FALSE, row.names = FALSE, col.names = TRUE)
+
+```
 
 
+```{r}
+tab <- read.csv(here::here("signatures", "SenCat", "SenCAT.gEAR.csv"), header = TRUE, sep = ",")
+
+plot(density(tab$coef))
+```
